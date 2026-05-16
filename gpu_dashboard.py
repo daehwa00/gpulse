@@ -83,15 +83,58 @@ def env_bool(name: str, default: bool = False) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def positive_float(value: str) -> float:
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"{value!r} is not a number") from exc
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be greater than 0")
+    return parsed
+
+
+def bounded_float(minimum: float, maximum: float):
+    def parse(value: str) -> float:
+        parsed = positive_float(value)
+        if parsed < minimum or parsed > maximum:
+            raise argparse.ArgumentTypeError(f"must be between {minimum:g} and {maximum:g}")
+        return parsed
+
+    return parse
+
+
+def positive_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"{value!r} is not an integer") from exc
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be greater than 0")
+    return parsed
+
+
+def env_positive_float(name: str, default: float) -> float:
+    value = env_float(name, default)
+    return value if value > 0 else default
+
+
+def env_positive_int(name: str, default: int) -> int:
+    value = env_int(name, default)
+    return value if value > 0 else default
+
+
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(prog=os.environ.get("GPU_DASH_PROG") or os.path.basename(sys.argv[0]), description="GPulse live nvidia-smi terminal dashboard")
-    parser.add_argument("--sample-interval", type=float, default=env_float("GPU_DASH_SAMPLE_INTERVAL", 1.0))
-    parser.add_argument("--frame-interval", type=float, default=env_float("GPU_DASH_FRAME_INTERVAL", 0.125))
-    parser.add_argument("--smoothing", type=float, default=env_float("GPU_DASH_SMOOTHING", 0.32))
-    parser.add_argument("--bar-width", type=int, default=env_int("GPU_DASH_BAR_WIDTH", 24))
-    parser.add_argument("--max-jobs", type=int, default=env_int("GPU_DASH_MAX_JOBS", 10))
-    parser.add_argument("--history-len", type=int, default=env_int("GPU_DASH_HISTORY_LEN", 24))
-    parser.add_argument("--job-interval", type=float, default=env_float("GPU_DASH_JOB_INTERVAL", 3.0))
+    parser = argparse.ArgumentParser(
+        prog=os.environ.get("GPU_DASH_PROG") or os.path.basename(sys.argv[0]),
+        description="GPulse live nvidia-smi terminal dashboard",
+    )
+    parser.add_argument("--sample-interval", type=positive_float, default=env_positive_float("GPU_DASH_SAMPLE_INTERVAL", 1.0))
+    parser.add_argument("--frame-interval", type=positive_float, default=env_positive_float("GPU_DASH_FRAME_INTERVAL", 0.125))
+    parser.add_argument("--smoothing", type=bounded_float(0.01, 1.0), default=min(1.0, max(0.01, env_float("GPU_DASH_SMOOTHING", 0.32))))
+    parser.add_argument("--bar-width", type=positive_int, default=env_positive_int("GPU_DASH_BAR_WIDTH", 24))
+    parser.add_argument("--max-jobs", type=positive_int, default=env_positive_int("GPU_DASH_MAX_JOBS", 10))
+    parser.add_argument("--history-len", type=positive_int, default=env_positive_int("GPU_DASH_HISTORY_LEN", 24))
+    parser.add_argument("--job-interval", type=positive_float, default=env_positive_float("GPU_DASH_JOB_INTERVAL", 3.0))
     parser.add_argument("--no-jobs", action="store_true", default=env_bool("GPU_DASH_NO_JOBS", False))
     parser.add_argument("--ascii", action="store_true", default=env_bool("GPU_DASH_ASCII", False))
     return parser.parse_args()
@@ -514,7 +557,7 @@ def render(rows: list[dict[str, Any]], jobs: list[dict[str, Any]], job_error: st
         f"{BOLD}VRAM{RESET} {color_for_pct(mem_pct)}{total_used/1024:.1f}/{total_mem/1024:.1f} GiB {mem_pct:.1f}%{RESET}  {DIM}{VSEP}{RESET}  "
         f"{BOLD}TEMP{RESET} {temp_color(avg_temp)}{avg_temp:.0f}°C{RESET}  {DIM}{VSEP}{RESET}  "
         f"{BOLD}JOBS{RESET} {len(jobs)}  {DIM}{VSEP}{RESET}  "
-        f"{DIM}sample {sample_age:.1f}s · render {1/ARGS.frame_interval:.0f}fps · jobs {ARGS.job_interval:g}s{RESET}\n"
+        f"{DIM}sample {sample_age:.1f}s · render {1 / max(0.03, ARGS.frame_interval):.0f}fps · jobs {ARGS.job_interval:g}s{RESET}\n"
     )
 
     layout = table_layout(cols)

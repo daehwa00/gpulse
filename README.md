@@ -215,13 +215,13 @@ gpulse-ssh gpu02 --ascii --bar-width 18
 
 | Option | Default | Description |
 |---|---:|---|
-| `--sample-interval` | `1.0` | Seconds between `nvidia-smi` samples. |
-| `--frame-interval` | `0.125` | Render interval. `0.125` is about 8 FPS. |
-| `--smoothing` | `0.32` | Smooths visual value changes. |
-| `--bar-width` | `24` | Base width for utilization bars. Layout can grow/shrink dynamically. |
-| `--max-jobs` | `10` | Maximum number of GPU jobs to show. |
-| `--history-len` | `24` | Sparkline history length. |
-| `--job-interval` | `3.0` | Seconds between job/process refreshes. |
+| `--sample-interval` | `1.0` | Seconds between `nvidia-smi` samples. Must be greater than 0. |
+| `--frame-interval` | `0.125` | Render interval. `0.125` is about 8 FPS. Must be greater than 0. |
+| `--smoothing` | `0.32` | Smooths visual value changes. Must be between `0.01` and `1.0`. |
+| `--bar-width` | `24` | Base width for utilization bars. Must be greater than 0; layout can grow/shrink dynamically. |
+| `--max-jobs` | `10` | Maximum number of GPU jobs to show. Must be greater than 0; use `--no-jobs` to hide jobs. |
+| `--history-len` | `24` | Sparkline history length. Must be greater than 0. |
+| `--job-interval` | `3.0` | Seconds between job/process refreshes. Must be greater than 0. |
 | `--no-jobs` | off | Hide the active jobs table. |
 | `--ascii` | off | Use ASCII characters for older terminals. |
 
@@ -246,10 +246,10 @@ GPU_DASH_MAX_JOBS=20 GPU_DASH_FRAME_INTERVAL=0.2 gpulse gpu01
 | `GPU_DASH_JOB_INTERVAL` | Job table refresh interval. |
 | `GPU_DASH_NO_JOBS=1` | Disable the job table. |
 | `GPU_DASH_ASCII=1` | Force ASCII UI. |
-| `GPU_DASH_SSH_OPTS` | SSH options used by `gpulse-ssh`. |
+| `GPU_DASH_SSH_OPTS` | Whitespace-separated SSH options used by `gpulse-ssh`. |
 | `GPU_TMUX_SESSION` | tmux session name used by `gpulse`. |
 | `GPU_TMUX_HOSTS` | Space-separated fallback hosts for `gpulse`. |
-| `GPU_TMUX_SSH_OPTS` | SSH options used by `gpulse`. |
+| `GPU_TMUX_SSH_OPTS` | Whitespace-separated SSH options used by `gpulse`. |
 
 ---
 

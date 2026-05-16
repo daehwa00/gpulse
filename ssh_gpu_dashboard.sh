@@ -19,6 +19,7 @@ HOST="$1"
 shift
 DASHBOARD_SCRIPT="${GPU_DASHBOARD_SCRIPT:-$SCRIPT_DIR/gpu_dashboard.py}"
 SSH_KEEPALIVE_OPTS="${GPU_DASH_SSH_OPTS:--o ServerAliveInterval=10 -o ServerAliveCountMax=2 -o ConnectTimeout=10}"
+read -r -a SSH_KEEPALIVE_ARGS <<< "$SSH_KEEPALIVE_OPTS"
 
 if [ ! -r "$DASHBOARD_SCRIPT" ]; then
   echo "gpu dashboard script not readable: $DASHBOARD_SCRIPT" >&2
@@ -79,5 +80,4 @@ PY_DASHBOARD
 REMOTE
 )"
 
-# shellcheck disable=SC2086
-exec ssh $SSH_KEEPALIVE_OPTS -tt "$HOST" "$remote_command"
+exec ssh "${SSH_KEEPALIVE_ARGS[@]}" -tt "$HOST" "$remote_command"

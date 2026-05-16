@@ -61,10 +61,12 @@ DASHBOARD_ARGS=("$@")
 
 quote_dashboard_args() {
   local q out=""
-  for arg in "${DASHBOARD_ARGS[@]}"; do
-    printf -v q '%q' "$arg"
-    out+=" $q"
-  done
+  if ((${#DASHBOARD_ARGS[@]})); then
+    for arg in "${DASHBOARD_ARGS[@]}"; do
+      printf -v q '%q' "$arg"
+      out+=" $q"
+    done
+  fi
   printf '%s' "$out"
 }
 
@@ -85,11 +87,11 @@ ssh_gpu_loop_command() {
 SCRIPT_VERSION=$version_q
 GPU_TMUX_HOSTS=$hosts_q
 GPU_TMUX_SSH_OPTS=$ssh_opts_q
+read -r -a GPU_TMUX_SSH_ARGS <<< "\$GPU_TMUX_SSH_OPTS"
 while true; do
   selected_host=""
   for host in \$GPU_TMUX_HOSTS; do
-    # shellcheck disable=SC2086
-    ssh \$GPU_TMUX_SSH_OPTS -o BatchMode=yes -o ConnectionAttempts=1 "\$host" true >/dev/null 2>&1 &
+    ssh "\${GPU_TMUX_SSH_ARGS[@]}" -o BatchMode=yes -o ConnectionAttempts=1 "\$host" true >/dev/null 2>&1 &
     probe_pid=\$!
     for _ in 1 2 3 4 5 6 7 8 9 10; do
       if ! kill -0 "\$probe_pid" 2>/dev/null; then
