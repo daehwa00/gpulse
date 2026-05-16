@@ -1,0 +1,3 @@
+#!/bin/bash
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+exec "$SCRIPT_DIR/start_ssh_gpu_tmux.sh" "$@"
