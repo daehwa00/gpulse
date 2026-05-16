@@ -84,7 +84,7 @@ def env_bool(name: str, default: bool = False) -> bool:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Live nvidia-smi terminal dashboard")
+    parser = argparse.ArgumentParser(prog=os.environ.get("GPU_DASH_PROG") or os.path.basename(sys.argv[0]), description="GPulse live nvidia-smi terminal dashboard")
     parser.add_argument("--sample-interval", type=float, default=env_float("GPU_DASH_SAMPLE_INTERVAL", 1.0))
     parser.add_argument("--frame-interval", type=float, default=env_float("GPU_DASH_FRAME_INTERVAL", 0.125))
     parser.add_argument("--smoothing", type=float, default=env_float("GPU_DASH_SMOOTHING", 0.32))
@@ -558,7 +558,7 @@ def render(rows: list[dict[str, Any]], jobs: list[dict[str, Any]], job_error: st
 
     if not ARGS.no_jobs:
         render_jobs(lines, jobs, job_error, cols)
-    lines.append(DIM + "\n Ctrl-C: stop dashboard   |   tmux detach: Ctrl-b d   |   generic: gpuwatch / sshgpu <host>" + RESET)
+    lines.append(DIM + "\n Ctrl-C: stop dashboard   |   tmux detach: Ctrl-b d   |   commands: gpulse-local / gpulse-ssh <host>" + RESET)
     write_frame(lines)
 
 

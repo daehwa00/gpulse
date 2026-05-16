@@ -100,7 +100,7 @@ def frame_svg(frame: int) -> str:
     y += LINE_H
 
     if frame >= 4:
-        parts.append(text(LEFT, y, "[sshgpu connecting via gpu01]", DIM))
+        parts.append(text(LEFT, y, "[gpulse connecting via gpu01]", DIM))
         y += LINE_H
     if frame < 7:
         parts.append(text(LEFT, y + 14, "creating tmux session, opening SSH, checking GPUs...", DIM, size=13))
@@ -181,7 +181,7 @@ def main() -> int:
     if not shutil.which("magick"):
         raise SystemExit("ImageMagick 'magick' command is required to build the GIF")
 
-    with tempfile.TemporaryDirectory(prefix="gpu-dashboard-gif-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="gpulse-gif-") as tmp:
         tmpdir = Path(tmp)
         pngs = []
         for i in range(FRAMES):

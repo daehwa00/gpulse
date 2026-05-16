@@ -88,7 +88,7 @@ Your local laptop does **not** need an NVIDIA GPU when using `gpulse-ssh` or `gp
 ### Option A: clone and symlink
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/gpulse.git ~/Projects/gpulse
+git clone https://github.com/daehwa00/gpulse.git ~/Projects/gpulse
 cd ~/Projects/gpulse
 chmod +x gpulse gpulse-ssh gpulse-local gpu_dashboard.py ssh_gpu_dashboard.sh start_ssh_gpu_tmux.sh
 
@@ -339,7 +339,8 @@ rm -rf ~/Projects/gpulse
 rm -f ~/.local/bin/gpulse ~/.local/bin/gpulse-ssh ~/.local/bin/gpulse-local
 rm -f ~/.scripts/gpu_dashboard.py \
   ~/.scripts/ssh_gpu_dashboard.sh \
-  ~/.scripts/start_ssh_gpu_tmux.sh
+  ~/.scripts/start_ssh_gpu_tmux.sh \
+  ~/.scripts/assets
 ```
 
 Then remove any GPulse alias lines from `~/.zshrc` or `~/.bashrc`.

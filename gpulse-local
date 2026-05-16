@@ -1,3 +1,4 @@
 #!/bin/bash
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+export GPU_DASH_PROG="${GPU_DASH_PROG:-gpulse-local}"
 exec "$SCRIPT_DIR/gpu_dashboard.py" "$@"

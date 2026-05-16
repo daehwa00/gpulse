@@ -6,12 +6,12 @@ SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 usage() {
   cat >&2 <<'EOF'
 Usage:
-  start_ssh_gpu_tmux.sh <ssh-host-or-host-list> [gpu_dashboard.py args...]
+  gpulse <ssh-host-or-host-list> [gpu_dashboard.py args...]
 
 Examples:
-  start_ssh_gpu_tmux.sh gpu01
-  start_ssh_gpu_tmux.sh user@gpu-box --max-jobs 16
-  GPU_TMUX_SESSION=labgpu start_ssh_gpu_tmux.sh "gpu-a gpu-b"
+  gpulse gpu01
+  gpulse user@gpu-box --max-jobs 16
+  GPU_TMUX_SESSION=labgpu gpulse "gpu-a gpu-b"
 
 Environment:
   GPU_TMUX_SESSION      tmux session name (default: gpu-<first-host>)
@@ -56,7 +56,7 @@ else
 fi
 SSH_KEEPALIVE_OPTS="${GPU_TMUX_SSH_OPTS:-${GPU_DASH_SSH_OPTS:--o ServerAliveInterval=10 -o ServerAliveCountMax=2 -o ConnectTimeout=10}}"
 SSH_GPU_DASHBOARD="${SSH_GPU_DASHBOARD:-$SCRIPT_DIR/ssh_gpu_dashboard.sh}"
-SCRIPT_VERSION="sshgpu-tmux-v1"
+SCRIPT_VERSION="gpulse-tmux-v1"
 DASHBOARD_ARGS=("$@")
 
 quote_dashboard_args() {
@@ -112,13 +112,13 @@ while true; do
     echo "[\$host probe failed: \$probe_rc]"
   done
   if [ -z "\$selected_host" ]; then
-    echo '[sshgpu all routes failed] retrying in 5s...'
+    echo '[gpulse all routes failed] retrying in 5s...'
     sleep 5
     continue
   fi
-  echo "[sshgpu connecting via \$selected_host]"
+  echo "[gpulse connecting via \$selected_host]"
   $dashboard_cmd_q "\$selected_host"$dashboard_args_q
-  echo '[sshgpu disconnected] reconnecting in 2s...'
+  echo '[gpulse disconnected] reconnecting in 2s...'
   sleep 2
 done
 EOF_LOOP

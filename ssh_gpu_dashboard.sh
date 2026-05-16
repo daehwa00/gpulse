@@ -3,9 +3,15 @@ set -euo pipefail
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+  echo "Usage: gpulse-ssh <ssh-host> [gpu_dashboard.py args...]"
+  echo "Example: gpulse-ssh gpu01 --bar-width 20 --max-jobs 12"
+  exit 0
+fi
+
 if [ "$#" -lt 1 ]; then
-  echo "Usage: sshgpu <ssh-host> [gpu_dashboard.py args...]" >&2
-  echo "Example: sshgpu gpu01 --bar-width 20 --max-jobs 12" >&2
+  echo "Usage: gpulse-ssh <ssh-host> [gpu_dashboard.py args...]" >&2
+  echo "Example: gpulse-ssh gpu01 --bar-width 20 --max-jobs 12" >&2
   exit 2
 fi
 
@@ -45,6 +51,7 @@ job_interval_q="$(shell_q "${GPU_DASH_JOB_INTERVAL:-3.0}")"
 history_q="$(shell_q "${GPU_DASH_HISTORY_LEN:-24}")"
 ascii_q="$(shell_q "${GPU_DASH_ASCII:-0}")"
 no_jobs_q="$(shell_q "${GPU_DASH_NO_JOBS:-0}")"
+prog_q="$(shell_q "${GPU_DASH_PROG:-gpulse-ssh}")"
 
 remote_command="$(cat <<REMOTE
 export TERM=\"\${TERM:-xterm-256color}\"
@@ -57,12 +64,13 @@ export GPU_DASH_JOB_INTERVAL=$job_interval_q
 export GPU_DASH_HISTORY_LEN=$history_q
 export GPU_DASH_ASCII=$ascii_q
 export GPU_DASH_NO_JOBS=$no_jobs_q
+export GPU_DASH_PROG=$prog_q
 if ! command -v nvidia-smi >/dev/null 2>&1; then
-  echo '[gpu-dashboard] nvidia-smi not found on remote host' >&2
+  echo '[gpulse] nvidia-smi not found on remote host' >&2
   exit 127
 fi
 if ! command -v python3 >/dev/null 2>&1; then
-  echo '[gpu-dashboard] python3 not found on remote host' >&2
+  echo '[gpulse] python3 not found on remote host' >&2
   exit 127
 fi
 python3 -$args_q <<'PY_DASHBOARD'
