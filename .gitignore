@@ -3,3 +3,8 @@ __pycache__/
 *.py[cod]
 .env
 .venv/
+
+# Local OMX runtime state
+.omx/metrics.json
+.omx/state/
+.omx/logs/
