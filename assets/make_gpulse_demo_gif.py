@@ -24,7 +24,11 @@ CHAR_W = 8.7
 LEFT = 28
 TOP = 34
 FPS_DELAY = 10  # ImageMagick delay unit = 1/100 sec. 10 => 10fps.
-FRAMES = 44
+FRAMES = 67
+COMMAND = "gpulse gpu01"
+ENTER_FRAME = len(COMMAND) + 6
+OUTPUT_FRAME = ENTER_FRAME + 5
+DASHBOARD_FRAME = OUTPUT_FRAME + 7
 
 BG = "#090d18"
 PANEL = "#0f172a"
@@ -79,7 +83,6 @@ def sparkline(seed: int, frame: int, width: int = 18) -> str:
 
 
 def frame_svg(frame: int) -> str:
-    started = frame >= 7
     spin = SPINNER[frame % len(SPINNER)]
     util_base = [71, 92, 48, 12, 86, 63, 5, 77]
     mem_base = [24, 82, 35, 8, 71, 44, 5, 66]
@@ -95,14 +98,23 @@ def frame_svg(frame: int) -> str:
     ]
 
     y = TOP + 52
-    typed = "gpulse gpu01"[: max(0, min(len("gpulse gpu01"), frame + 1))]
-    parts.append(mono_segments(LEFT, y, [("$ ", GREEN, 700), (typed, TEXT, 700), ("▌" if frame < 8 else "", CYAN, None)]))
+    typed = COMMAND[: max(0, min(len(COMMAND), frame))]
+    cursor = "▌" if frame < ENTER_FRAME and frame % 4 != 3 else ""
+    # Terminal Enter normally leaves no glyph behind. The demo shows a brief
+    # explicit marker so the animation does not look like GPulse auto-started
+    # before the command was submitted.
+    enter_marker = "  ⏎ Enter" if ENTER_FRAME <= frame < OUTPUT_FRAME else ""
+    parts.append(mono_segments(LEFT, y, [("$ ", GREEN, 700), (typed, TEXT, 700), (cursor, CYAN, None), (enter_marker, CYAN, 700)]))
     y += LINE_H
 
-    if frame >= 4:
+    if frame < OUTPUT_FRAME:
+        parts.append("</svg>")
+        return "\n".join(parts)
+
+    if frame >= OUTPUT_FRAME:
         parts.append(text(LEFT, y, "[gpulse connecting via gpu01]", DIM))
         y += LINE_H
-    if frame < 7:
+    if frame < DASHBOARD_FRAME:
         parts.append(text(LEFT, y + 14, "creating tmux session, opening SSH, checking GPUs...", DIM, size=13))
         parts.append("</svg>")
         return "\n".join(parts)
