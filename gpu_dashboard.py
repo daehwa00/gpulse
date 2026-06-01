@@ -137,6 +137,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--job-interval", type=positive_float, default=env_positive_float("GPU_DASH_JOB_INTERVAL", 3.0))
     parser.add_argument("--no-jobs", action="store_true", default=env_bool("GPU_DASH_NO_JOBS", False))
     parser.add_argument("--ascii", action="store_true", default=env_bool("GPU_DASH_ASCII", False))
+    parser.add_argument("--once", action="store_true", default=env_bool("GPU_DASH_ONCE", False), help="render one sampled frame and exit")
     return parser.parse_args()
 
 
@@ -261,6 +262,7 @@ def compact_command(command: str) -> str:
 
 
 def fetch_jobs(gpus: list[dict[str, Any]], max_jobs: int) -> tuple[list[dict[str, Any]], str | None]:
+    del max_jobs  # display limiting is per-GPU in render_jobs; fetch keeps all rows for correct grouping.
     uuid_to_idx = {row.get("uuid", ""): str(row.get("idx", "?")) for row in gpus if row.get("uuid")}
     fields = JOB_FIELDS_PRIMARY
     try:
@@ -287,15 +289,19 @@ def fetch_jobs(gpus: list[dict[str, Any]], max_jobs: int) -> tuple[list[dict[str
             {
                 "pid": pid,
                 "gpus": set(),
+                "gpu_mems": {},
                 "mem": 0.0,
                 "process_name": data.get("process_name", ""),
             },
         )
+        gpu_idx = uuid_to_idx.get(data.get("gpu_uuid", ""), "?") if has_gpu_uuid else "?"
+        used_memory = parse_float(data.get("used_memory", "0"))
         if has_gpu_uuid:
-            job["gpus"].add(uuid_to_idx.get(data.get("gpu_uuid", ""), "?"))
+            job["gpus"].add(gpu_idx)
         else:
-            job["gpus"].add("?")
-        job["mem"] += parse_float(data.get("used_memory", "0"))
+            job["gpus"].add(gpu_idx)
+        job["gpu_mems"][gpu_idx] = float(job["gpu_mems"].get(gpu_idx, 0.0)) + used_memory
+        job["mem"] += used_memory
         if data.get("process_name"):
             job["process_name"] = data["process_name"]
 
@@ -308,9 +314,12 @@ def fetch_jobs(gpus: list[dict[str, Any]], max_jobs: int) -> tuple[list[dict[str
         comm = safe_ps(pid, "comm")
         job["cmd"] = compact_command(args or comm or job.get("process_name", "") or "?")
         job["cwd"] = proc_cwd(pid)
-        job["gpus"] = ",".join(sorted(job["gpus"], key=lambda x: int(x) if x.isdigit() else 999))
-    jobs.sort(key=lambda row: (-float(row.get("mem", 0.0)), row.get("pid", "")))
-    return jobs[:max_jobs], None
+        gpu_list = sorted((str(gpu) for gpu in job["gpus"]), key=numeric_sort_key)
+        job["gpu_mems"] = {gpu: float(job["gpu_mems"].get(gpu, 0.0)) for gpu in gpu_list}
+        job["gpus_list"] = gpu_list
+        job["gpus"] = ",".join(gpu_list)
+    jobs.sort(key=lambda row: (numeric_sort_key((row.get("gpus_list") or ["?"])[0]), pid_sort_key(row.get("pid", ""))))
+    return jobs, None
 
 
 def clone_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -413,6 +422,15 @@ def elide_middle(text: str, width: int) -> str:
     return (text[:left] + "…" + text[-right:])[:width]
 
 
+def numeric_sort_key(value: Any) -> tuple[int, int | str]:
+    text = str(value)
+    return (0, int(text)) if text.isdigit() else (1, text)
+
+
+def pid_sort_key(value: Any) -> tuple[int, int | str]:
+    text = str(value)
+    return (0, int(text)) if text.isdigit() else (1, text)
+
 
 def model_summary(rows: list[dict[str, Any]]) -> str:
     names = [str(row.get("name", "GPU")) for row in rows]
@@ -481,40 +499,69 @@ def sparkline(values: list[float], width: int) -> str:
 
 
 
-def render_jobs(lines: list[str], jobs: list[dict[str, Any]], job_error: str | None, cols: int) -> None:
+def render_jobs(
+    lines: list[str],
+    jobs: list[dict[str, Any]],
+    job_error: str | None,
+    cols: int,
+    gpu_rows: list[dict[str, Any]],
+) -> None:
     lines.append("")
     title = "Active GPU jobs"
     if job_error:
         lines.append(BOLD + title + RESET + DIM + f"  nvidia-smi process query unavailable: {job_error[:90]}" + RESET)
         return
-    lines.append(BOLD + title + RESET + DIM + "  pid / gpu / vram / user / cwd / command" + RESET)
+    lines.append(BOLD + title + RESET + DIM + "  GPU 0→N / PID ascending" + RESET)
     if not jobs:
         lines.append(DIM + " none detected by nvidia-smi compute-apps" + RESET)
         return
 
-    pid_w, gpu_w, vram_w, user_w, time_w = 7, 7, 7, 10, 10
-    fixed = 1 + pid_w + 2 + gpu_w + 2 + vram_w + 2 + user_w + 2 + time_w + 2
+    gpu_order = sorted((str(row.get("idx", "?")) for row in gpu_rows), key=numeric_sort_key)
+    seen_gpus = set(gpu_order)
+    for job in jobs:
+        for gpu in (job.get("gpu_mems") or {}).keys():
+            gpu = str(gpu)
+            if gpu not in seen_gpus:
+                gpu_order.append(gpu)
+                seen_gpus.add(gpu)
+    gpu_order.sort(key=numeric_sort_key)
+
+    jobs_by_gpu: dict[str, list[dict[str, Any]]] = {gpu: [] for gpu in gpu_order}
+    for job in jobs:
+        gpu_mems = job.get("gpu_mems") or {}
+        for gpu in sorted((str(gpu) for gpu in gpu_mems.keys()), key=numeric_sort_key):
+            jobs_by_gpu.setdefault(gpu, []).append(job)
+    gpu_w, pid_w, vram_w, all_gpu_w, user_w, time_w = 3, 7, 7, 6, 10, 10
+    fixed = 1 + gpu_w + 2 + pid_w + 2 + vram_w + 2 + all_gpu_w + 2 + user_w + 2 + time_w + 2
     cwd_w = max(18, min(42, cols - fixed - 28))
     cmd_w = max(20, cols - fixed - cwd_w - 2)
     header = (
-        f" {'pid':^{pid_w}}  {'gpu':^{gpu_w}}  {'vram':^{vram_w}}  "
+        f" {'gpu':^{gpu_w}}  {'pid':^{pid_w}}  {'vram':^{vram_w}}  {'all':^{all_gpu_w}}  "
         f"{'user':^{user_w}}  {'time':^{time_w}}  {'cwd':^{cwd_w}}  {'command':^{cmd_w}}"
     )
     sep = (
-        f" {'-' * pid_w}  {'-' * gpu_w}  {'-' * vram_w}  "
+        f" {'-' * gpu_w}  {'-' * pid_w}  {'-' * vram_w}  {'-' * all_gpu_w}  "
         f"{'-' * user_w}  {'-' * time_w}  {'-' * cwd_w}  {'-' * cmd_w}"
     )
     lines.append(DIM + header + RESET)
     lines.append(DIM + sep + RESET)
-    for job in jobs:
-        pid = str(job.get("pid", "?"))[-pid_w:].ljust(pid_w)
-        gpus = elide_middle(str(job.get("gpus", "?")), gpu_w).strip().ljust(gpu_w)
-        vram = fmt_mem(float(job.get("mem", 0.0))).ljust(vram_w)
-        user = elide_middle(str(job.get("user", "?")), user_w).strip().ljust(user_w)
-        etime = elide_middle(str(job.get("etime", "?")), time_w).strip().ljust(time_w)
-        cwd = elide_middle(str(job.get("cwd", "")) or "?", cwd_w).strip().ljust(cwd_w)
-        cmd = elide_middle(str(job.get("cmd", "?")), cmd_w).strip().ljust(cmd_w)
-        lines.append(f" {pid}  {gpus}  {vram}  {user}  {etime}  {cwd}  {cmd}")
+
+    for gpu in gpu_order:
+        group = sorted(jobs_by_gpu.get(gpu, []), key=lambda row: pid_sort_key(row.get("pid", "")))
+        if not group:
+            continue
+        for row_idx, job in enumerate(group[: ARGS.max_jobs]):
+            gpu_cell = (gpu if row_idx == 0 else "")[-gpu_w:].ljust(gpu_w)
+            pid = str(job.get("pid", "?"))[-pid_w:].ljust(pid_w)
+            vram = fmt_mem(float((job.get("gpu_mems") or {}).get(gpu, job.get("mem", 0.0)))).ljust(vram_w)
+            all_gpu = elide_middle(str(job.get("gpus", "?")), all_gpu_w).strip().ljust(all_gpu_w)
+            user = elide_middle(str(job.get("user", "?")), user_w).strip().ljust(user_w)
+            etime = elide_middle(str(job.get("etime", "?")), time_w).strip().ljust(time_w)
+            cwd = elide_middle(str(job.get("cwd", "")) or "?", cwd_w).strip().ljust(cwd_w)
+            cmd = elide_middle(str(job.get("cmd", "?")), cmd_w).strip().ljust(cmd_w)
+            lines.append(f" {gpu_cell}  {pid}  {vram}  {all_gpu}  {user}  {etime}  {cwd}  {cmd}")
+        if len(group) > ARGS.max_jobs:
+            lines.append(DIM + f"      ... {len(group) - ARGS.max_jobs} more on GPU {gpu}; increase --max-jobs to show all" + RESET)
 
 
 def write_frame(lines: list[str]) -> None:
@@ -600,7 +647,7 @@ def render(rows: list[dict[str, Any]], jobs: list[dict[str, Any]], job_error: st
         lines.append(" " + "  ".join(parts))
 
     if not ARGS.no_jobs:
-        render_jobs(lines, jobs, job_error, cols)
+        render_jobs(lines, jobs, job_error, cols, rows)
     lines.append(DIM + "\n Ctrl-C: stop dashboard   |   tmux detach: Ctrl-b d   |   commands: gpulse-local / gpulse-ssh <host>" + RESET)
     write_frame(lines)
 
@@ -638,6 +685,7 @@ def sampler_loop(state: dict[str, Any], lock: threading.Lock, stop_event: thread
             with lock:
                 state["jobs"] = jobs
                 state["job_error"] = job_error
+                state["jobs_sampled"] = True
             next_job_at = time.monotonic() + job_interval
 
         if not did_work:
@@ -658,6 +706,7 @@ def main() -> int:
         "target_rows": [],
         "jobs": [],
         "job_error": None,
+        "jobs_sampled": False,
         "last_sample_at": 0.0,
         "last_error": None,
     }
@@ -673,6 +722,7 @@ def main() -> int:
                 target_rows = clone_rows(state["target_rows"])
                 jobs = clone_rows(state["jobs"])
                 job_error = state["job_error"]
+                jobs_sampled = bool(state.get("jobs_sampled"))
                 last_sample_at = state["last_sample_at"]
                 last_error = state["last_error"]
 
@@ -680,6 +730,8 @@ def main() -> int:
                 current_rows = blend_rows(current_rows, target_rows, smoothing)
             render(current_rows, jobs, job_error, spinner=SPINNER[frame % len(SPINNER)], last_sample_at=last_sample_at, error=last_error)
             frame += 1
+            if ARGS.once and (last_error or (target_rows and (ARGS.no_jobs or jobs_sampled))):
+                return 0
 
             # Keep cadence stable. If output/terminal I/O takes too long, drop the
             # missed frame instead of bursting several fast frames afterward.

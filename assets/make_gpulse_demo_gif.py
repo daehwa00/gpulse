@@ -27,8 +27,8 @@ FPS_DELAY = 10  # ImageMagick delay unit = 1/100 sec. 10 => 10fps.
 FRAMES = 67
 COMMAND = "gpulse gpu01"
 ENTER_FRAME = len(COMMAND) + 6
-OUTPUT_FRAME = ENTER_FRAME + 5
-DASHBOARD_FRAME = OUTPUT_FRAME + 7
+OUTPUT_FRAME = ENTER_FRAME + 7
+DASHBOARD_FRAME = OUTPUT_FRAME + 5
 
 BG = "#090d18"
 PANEL = "#0f172a"
@@ -68,6 +68,19 @@ def mono_segments(x: float, y: float, segments: list[tuple[str, str, int | None]
     return "\n".join(parts)
 
 
+def col_x(col: int) -> float:
+    return LEFT + col * CHAR_W
+
+
+def line_y(row: int) -> float:
+    return TOP + 52 + row * LINE_H
+
+
+def col_segments(row: int, segments: list[tuple[int, str, str, int | None]]) -> str:
+    y = line_y(row)
+    return "\n".join(text(col_x(col), y, value, fill, 400 if weight is None else weight) for col, value, fill, weight in segments)
+
+
 def pct_bar(pct: float, width: int = 18) -> str:
     filled = max(0, min(width, round(width * pct / 100)))
     return "█" * filled + "░" * (width - filled)
@@ -80,6 +93,13 @@ def sparkline(seed: int, frame: int, width: int = 18) -> str:
         idx = max(0, min(len(SPARK) - 1, int(v * (len(SPARK) - 1))))
         chars.append(SPARK[idx])
     return "".join(chars)
+
+
+def row_rect(row: int, fill: str, x_col: int = 0, width_cols: int = 122) -> str:
+    return (
+        f'<rect x="{col_x(x_col) - 4:.1f}" y="{line_y(row) - 16:.1f}" '
+        f'width="{width_cols * CHAR_W:.1f}" height="21" rx="3" fill="{fill}"/>'
+    )
 
 
 def frame_svg(frame: int) -> str:
@@ -97,52 +117,73 @@ def frame_svg(frame: int) -> str:
         text(104, 49, "gpulse demo", DIM, 700, 13),
     ]
 
-    y = TOP + 52
     typed = COMMAND[: max(0, min(len(COMMAND), frame))]
-    cursor = "▌" if frame < ENTER_FRAME and frame % 4 != 3 else ""
-    # Terminal Enter normally leaves no glyph behind. The demo shows a brief
-    # explicit marker so the animation does not look like GPulse auto-started
-    # before the command was submitted.
-    enter_marker = "  ⏎ Enter" if ENTER_FRAME <= frame < OUTPUT_FRAME else ""
-    parts.append(mono_segments(LEFT, y, [("$ ", GREEN, 700), (typed, TEXT, 700), (cursor, CYAN, None), (enter_marker, CYAN, 700)]))
-    y += LINE_H
+    cursor = "▌" if frame < OUTPUT_FRAME and frame % 4 != 3 else ""
+    parts.append(col_segments(0, [(0, "$", GREEN, 700), (2, typed, TEXT, 700), (2 + len(typed), cursor, CYAN, None)]))
 
     if frame < OUTPUT_FRAME:
         parts.append("</svg>")
         return "\n".join(parts)
 
-    if frame >= OUTPUT_FRAME:
-        parts.append(text(LEFT, y, "[gpulse connecting via gpu01]", DIM))
-        y += LINE_H
+    parts.append(col_segments(1, [(0, "[gpulse connecting via gpu01]", DIM, None)]))
     if frame < DASHBOARD_FRAME:
-        parts.append(text(LEFT, y + 14, "creating tmux session, opening SSH, checking GPUs...", DIM, size=13))
+        parts.append(text(col_x(0), line_y(2) + 14, "creating tmux session, opening SSH, checking GPUs...", DIM, size=13))
         parts.append("</svg>")
         return "\n".join(parts)
 
-    # Dashboard header panel.
-    dash_y = y + 8
-    parts.append(f'<rect x="28" y="{dash_y - 22}" width="1064" height="504" rx="14" fill="{PANEL_2}" stroke="{BORDER}"/>')
-    parts.append(mono_segments(LEFT + 16, dash_y, [
-        (spin + " ", CYAN, 700),
-        ("GPU LIVE", TEXT, 700),
-        ("  gpu01", DIM, None),
-        ("  8x NVIDIA GPU", BLUE, 700),
-        ("  safe demo", DIM, None),
-    ]))
-    y = dash_y + LINE_H
-
     avg_util = sum(util_base) / len(util_base) + math.sin(frame / 3) * 3
     avg_mem = sum(mem_base) / len(mem_base) + math.cos(frame / 4) * 2
+    total_used = avg_mem / 100 * 8 * 180
     jobs = 5 + (frame // 12) % 3
-    summary = f"UTIL {avg_util:04.1f}% │ VRAM {avg_mem:04.1f}% │ TEMP 54°C │ JOBS {jobs} │ sample 1.0s/render 8fps"
-    parts.append(text(LEFT + 16, y, summary, DIM))
-    y += LINE_H
-    parts.append(text(LEFT + 16, y, "─" * 120, BORDER))
-    y += LINE_H
-
-    header = "gpu  state  util %                  vram used/total      %     temp   power draw/limit    trend"
-    parts.append(text(LEFT + 16, y, header, CYAN, 700))
-    y += LINE_H
+    row = 3
+    parts.append(col_segments(row, [
+        (0, spin, CYAN, 700),
+        (2, "GPU LIVE", TEXT, 700),
+        (12, "gpu01", DIM, None),
+        (19, "8x NVIDIA GPU", BLUE, 700),
+        (34, "demo data", DIM, None),
+        (48, "2026-05-16 21:20:00", DIM, None),
+    ]))
+    row += 1
+    parts.append(col_segments(row, [
+        (0, "UTIL", TEXT, 700),
+        (5, f"{avg_util:4.1f}%", GREEN if avg_util < 70 else YELLOW, 700),
+        (12, "│", BORDER, None),
+        (15, "VRAM", TEXT, 700),
+        (20, f"{total_used:5.1f}/1440.0 GiB", YELLOW if avg_mem >= 70 else GREEN, 700),
+        (39, f"{avg_mem:4.1f}%", YELLOW if avg_mem >= 70 else GREEN, 700),
+        (46, "│", BORDER, None),
+        (49, "TEMP", TEXT, 700),
+        (54, "54°C", GREEN, 700),
+        (60, "│", BORDER, None),
+        (63, "JOBS", TEXT, 700),
+        (68, str(jobs), TEXT, 700),
+        (72, "│", BORDER, None),
+        (75, "sample 1.0s · render 8fps · jobs 3s", DIM, None),
+    ]))
+    row += 1
+    parts.append(col_segments(row, [(0, "─" * 122, BORDER, None)]))
+    row += 1
+    parts.append(col_segments(row, [
+        (1, "gpu", CYAN, 700),
+        (6, "state", CYAN, 700),
+        (15, "util %", CYAN, 700),
+        (42, "vram used/total %", CYAN, 700),
+        (74, "temp", CYAN, 700),
+        (82, "power draw/limit", CYAN, 700),
+        (98, "trend", CYAN, 700),
+    ]))
+    row += 1
+    parts.append(col_segments(row, [
+        (1, "───", BORDER, None),
+        (6, "──────", BORDER, None),
+        (15, "────────────────────────", BORDER, None),
+        (42, "──────────────────────", BORDER, None),
+        (74, "────", BORDER, None),
+        (82, "────────────────", BORDER, None),
+        (98, "──────────────────", BORDER, None),
+    ]))
+    row += 1
 
     for idx in range(8):
         util = max(0, min(100, util_base[idx] + math.sin(frame * 0.45 + idx) * 8))
@@ -155,36 +196,63 @@ def frame_svg(frame: int) -> str:
         mem_color = RED if mem > 90 else (YELLOW if mem > 70 else GREEN)
         temp_color = RED if temp > 78 else (YELLOW if temp > 65 else GREEN)
         row_bg = "#0b1324" if idx % 2 == 0 else "#101a2e"
-        parts.append(f'<rect x="40" y="{y - 16}" width="1038" height="21" rx="5" fill="{row_bg}"/>')
-        parts.append(mono_segments(LEFT + 18, y, [
-            (f"{idx:<4}", BLUE, 700),
-            (f"{state:<7}", state_color, 700),
-            (f"{util:5.1f} ", util_color, 700),
-            (pct_bar(util, 16) + "  ", util_color, None),
-            (f"{mem * 1.8:5.1f}/180.0 GiB ", TEXT, None),
-            (f"{mem:5.1f} ", mem_color, 700),
-            (f"{temp:4d}°C ", temp_color, 700),
-            (f"{power:4d}/1000 W      ", TEXT, None),
-            (sparkline(idx, frame, 18), MAGENTA if util > 60 else CYAN, None),
+        parts.append(row_rect(row, row_bg, 0, 122))
+        parts.append(col_segments(row, [
+            (1, f"{idx:<3}", BLUE, 700),
+            (6, f"{state.strip():<6}", state_color, 700),
+            (15, pct_bar(util, 16), util_color, None),
+            (32, f"{util:5.1f}%", util_color, 700),
+            (42, pct_bar(mem, 10), mem_color, None),
+            (53, f"{mem * 1.8:5.1f}/180.0G", TEXT, None),
+            (66, f"{mem:5.1f}%", mem_color, 700),
+            (74, f"{temp:3d}°C", temp_color, 700),
+            (82, f"{power:4d}/1000 W", TEXT, None),
+            (98, sparkline(idx, frame, 18), MAGENTA if util > 60 else CYAN, None),
         ]))
-        y += LINE_H
+        row += 1
 
-    y += 10
-    parts.append(text(LEFT + 16, y, "Active GPU jobs", CYAN, 700))
-    y += LINE_H
-    parts.append(text(LEFT + 16, y, "pid     gpu   vram      user     time      cwd          command", CYAN, 700))
-    y += LINE_H
+    row += 1
+    parts.append(col_segments(row, [(0, "Active GPU jobs", CYAN, 700), (18, "pid / gpu / vram / user / cwd / command", DIM, None)]))
+    row += 1
+    parts.append(col_segments(row, [
+        (1, "pid", CYAN, 700),
+        (10, "gpu", CYAN, 700),
+        (18, "vram", CYAN, 700),
+        (30, "user", CYAN, 700),
+        (42, "time", CYAN, 700),
+        (54, "cwd", CYAN, 700),
+        (76, "command", CYAN, 700),
+    ]))
+    row += 1
+    parts.append(col_segments(row, [
+        (1, "───────", BORDER, None),
+        (10, "───────", BORDER, None),
+        (18, "───────", BORDER, None),
+        (30, "──────────", BORDER, None),
+        (42, "──────────", BORDER, None),
+        (54, "──────────────────", BORDER, None),
+        (76, "────────────────────────────────────────", BORDER, None),
+    ]))
+    row += 1
     job_rows = [
         ("42420", "0", "31.4 GiB", "user", "02:13", "~/SRA", "omx --madmax"),
         ("43118", "1", "96.8 GiB", "user", "00:48", "~/project", "python train.py --config gpu.yaml"),
         ("43991", "4", "82.1 GiB", "team", "05:02", "~/exp", "torchrun --nproc_per_node=8"),
     ]
     visible = 2 + (frame // 16) % 2
-    for row in job_rows[:visible]:
-        parts.append(text(LEFT + 16, y, f"{row[0]:<7} {row[1]:<5} {row[2]:<9} {row[3]:<8} {row[4]:<9} {row[5]:<12} {row[6]}", TEXT))
-        y += LINE_H
+    for job in job_rows[:visible]:
+        parts.append(col_segments(row, [
+            (1, f"{job[0]:<7}", TEXT, None),
+            (10, f"{job[1]:<7}", TEXT, None),
+            (18, f"{job[2]:<7}", TEXT, None),
+            (30, f"{job[3]:<10}", TEXT, None),
+            (42, f"{job[4]:<10}", TEXT, None),
+            (54, f"{job[5]:<18}", TEXT, None),
+            (76, job[6], TEXT, None),
+        ]))
+        row += 1
 
-    parts.append(text(LEFT + 16, 606, "Tip: close the terminal anytime; run gpulse gpu01 again to reattach.", DIM, size=13))
+    parts.append(text(col_x(0), 606, "Ctrl-C: stop dashboard   |   tmux detach: Ctrl-b d   |   run gpulse gpu01 again to reattach", DIM, size=13))
     parts.append("</svg>")
     return "\n".join(parts)
 
